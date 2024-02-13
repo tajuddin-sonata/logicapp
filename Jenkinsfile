@@ -210,7 +210,7 @@ pipeline {
                         else
                             artifact_version=$ver
                             echo "Downloading specified artifact version from Nexus..."
-                            curl -v -u nexus-user:nexus@123 -O "http://20.40.49.121:8081/repository/ci-config-service/ZIP_FILE_NAME-\${artifact_version}.zip"
+                            curl -v -u nexus-user:nexus@123 -O "http://20.40.49.121:8081/repository/ci-config-service/$ZIP_FILE_NAME-\${artifact_version}.zip"
                         fi
                         rm -rf "$ZIP_FILE_NAME-\${artifact_version}"
                         unzip "$ZIP_FILE_NAME-\${artifact_version}.zip" -d "$ZIP_FILE_NAME-\${artifact_version}"
