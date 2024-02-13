@@ -1,0 +1,149 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "GetLandingContainerMetadata": {
+                "inputs": {
+                    "client_id": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_client']))",
+                    "step": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_step']))",
+                    "type": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_media_type']))"
+                },
+                "runAfter": {
+                    "HTTPRequestForMetadata": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "HTTPRequestForMetadata": {
+                "inputs": {
+                    "authentication": {
+                        "audience": "https://storage.azure.com",
+                        "type": "ManagedServiceIdentity"
+                    },
+                    "headers": {
+                        "x-ms-blob-type": "BlockBlob",
+                        "x-ms-date": "@{formatDateTime(utcNow(),'r')}",
+                        "x-ms-version": "2019-02-02"
+                    },
+                    "method": "GET",
+                    "uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('LandingFileData')?['landingcontainername']}?restype=container&comp=metadata"
+                },
+                "runAfter": {
+                    "LandingFileData": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
+            },
+            "HTTP_1": {
+                "inputs": {
+                    "authentication": {
+                        "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                        "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                        "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                        "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                        "type": "ActiveDirectoryOAuth"
+                    },
+                    "body": "@outputs('InputForWFConfigure')",
+                    "method": "POST",
+                    "uri": "https://$CONFIGURE_NAME.azurewebsites.net/api/$CONFIGURE_TRIGGER_NAME?code=$CONFIGURE_MASTER_KEY"
+                },
+                "runAfter": {
+                    "InputForWFConfigure": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
+            },
+            "InputForWFConfigure": {
+                "inputs": {
+                    "context": "@outputs('context')",
+                    "function_config": {
+                        "config_bucket_name": "@outputs('context')?['config_bucket_name']",
+                        "functions": "@parameters('INIT-Function')",
+                        "label_tags": "@parameters('INIT-bucket_label_tags')"
+                    },
+                    "input_files": {
+                        "source_file": {
+                            "bucket_name": "@{outputs('LandingFileData')?['landingcontainername']}",
+                            "full_path": "@{outputs('LandingFileData')?['filename']}",
+                            "uploaded": "@{outputs('LandingFileData')?['event_time']}",
+                            "version": "@{outputs('LandingFileData')?['version']}"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "context": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "LandingFileData": {
+                "inputs": {
+                    "config_bucket_name": "@{split(split(triggerBody()?['subject'],'/')[4],'-')[0]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[1]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[2]}",
+                    "content_type": "@triggerBody()?['data']['contentType']",
+                    "event_time": "@{triggerBody()?['event_time']}",
+                    "filename": "@last(split(triggerBody()?['subject'],'/'))",
+                    "full_path": "@triggerBody()?['subject']",
+                    "landingcontainername": "@split(triggerBody()?['subject'],'/')[4]",
+                    "size": "@triggerBody()?['data']['contentLength']",
+                    "storageaccountname": "@last(split(triggerBody()?['topic'],'/'))",
+                    "url": "@triggerBody()?['data']['url']",
+                    "version": "@{triggerBody()?['data']['eTag']}"
+                },
+                "runAfter": {},
+                "type": "Compose"
+            },
+            "context": {
+                "inputs": {
+                    "azure_location": "@{replace(toLower(appsetting('REGION_NAME')),' ','')}",
+                    "azure_subscription": "@split(appsetting('WEBSITE_OWNER_NAME'),'+')[0]",
+                    "client_id": "@outputs('GetLandingContainerMetadata')?['client_id']",
+                    "config_bucket_name": "@outputs('LandingFileData')?['config_bucket_name']",
+                    "execution_id": "@workflow()['run']['name']",
+                    "execution_start": "@utcNow()",
+                    "step": "@outputs('GetLandingContainerMetadata')?['step']",
+                    "storageaccounturl": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net",
+                    "trigger_file": {
+                        "bucket_name": "@outputs('LandingFileData')?['landingcontainername']",
+                        "content_type": "@outputs('LandingFileData')?['content_type']",
+                        "full_path": "@outputs('LandingFileData')?['filename']",
+                        "name": "@outputs('LandingFileData')?['filename']",
+                        "size": "@outputs('LandingFileData')?['size']",
+                        "upload_timestamp": "@outputs('LandingFileData')?['event_time']",
+                        "version": "@outputs('LandingFileData')?['version']"
+                    },
+                    "type": "@outputs('GetLandingContainerMetadata')?['type']",
+                    "workflow_id": "@appsetting('WEBSITE_SITE_NAME')"
+                },
+                "runAfter": {
+                    "GetLandingContainerMetadata": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "Compose"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "StartLandingContainer": {
+                "kind": "Http",
+                "type": "Request"
+            }
+        }
+    },
+    "kind": "Stateful"
+}
