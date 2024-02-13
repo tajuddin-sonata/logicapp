@@ -52,7 +52,7 @@
                     },
                     "body": "@outputs('InputForWFConfigure')",
                     "method": "POST",
-                    "uri": "https://$CONFIGURE_NAME.azurewebsites.net/api/$CONFIGURE_TRIGGER_NAME?code=$CONFIGURE_MASTER_KEY"
+                    "uri": "https://$CONFIGURE_FUNC_NAME.azurewebsites.net/api/$CONFIGURE_TRIGGER_NAME?code=$CONFIGURE_FUNC_MASTER_KEY"
                 },
                 "runAfter": {
                     "InputForWFConfigure": [
