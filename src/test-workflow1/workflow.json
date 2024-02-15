@@ -4,18 +4,29 @@
         "actions": {
             "CallWFConfigure": {
                 "inputs": {
-                    "body": "@outputs('InputForWFConfigure')",
-                    "function": {
-                        "connectionName": "azureFunctionOperation"
+                    "authentication": {
+                        "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                        "authority": "",
+                        "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                        "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                        "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                        "type": "ActiveDirectoryOAuth"
                     },
-                    "method": "POST"
+                    "body": "@outputs('InputForWFConfigure')",
+                    "method": "POST",
+                    "uri": "https://devfunctionappfeb-configure.azurewebsites.net/api/wf_configure_HttpTrigger1?code=GgvGS9PaduKgwCmCpflbPypQI0V849pHlRFHwNyrzdBAAzFuwl2QAA=="
                 },
                 "runAfter": {
                     "InputForWFConfigure": [
                         "SUCCEEDED"
                     ]
                 },
-                "type": "Function"
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
             },
             "CopyBlobToStagingContainer": {
                 "inputs": {
@@ -52,7 +63,7 @@
                                 }
                             },
                             "method": "delete",
-                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/files/@{encodeURIComponent(encodeURIComponent(outputs('StagingBlobName')?['BlobName']))}"
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent(outputs('LandingFileData')?['storageaccountname']))}/files/@{encodeURIComponent(encodeURIComponent(outputs('StagingBlobName')?['BlobName']))}"
                         },
                         "runAfter": {
                             "StagingBlobName": [
@@ -91,6 +102,10 @@
             },
             "HTTPRequestForMetadata": {
                 "inputs": {
+                    "authentication": {
+                        "audience": "https://storage.azure.com",
+                        "type": "ManagedServiceIdentity"
+                    },
                     "headers": {
                         "x-ms-blob-type": "BlockBlob",
                         "x-ms-date": "@{formatDateTime(utcNow(),'r')}",
@@ -115,18 +130,28 @@
                 "actions": {
                     "CallWFRedact": {
                         "inputs": {
-                            "body": "@outputs('InputForRedact')",
-                            "function": {
-                                "connectionName": "azureFunctionOperation-5"
+                            "authentication": {
+                                "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                                "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                                "type": "ActiveDirectoryOAuth"
                             },
-                            "method": "POST"
+                            "body": "@outputs('InputForRedact')",
+                            "method": "POST",
+                            "uri": "https://dev-functionappfeb-redact.azurewebsites.net/api/wf_redact_HttpTrigger1?code=5oFsAT0P1tQCnZPXzSnZvxnRQI28bCHnQE8XzCKyd02tAzFuWRPciA=="
                         },
                         "runAfter": {
                             "InputForRedact": [
                                 "SUCCEEDED"
                             ]
                         },
-                        "type": "Function"
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        },
+                        "type": "Http"
                     },
                     "IfAudioInWorkingFile": {
                         "actions": {
@@ -359,30 +384,6 @@
                         },
                         "type": "Compose"
                     },
-                    "Send_an_email_(V2)_1": {
-                        "inputs": {
-                            "body": {
-                                "Body": "<p>Analyse function failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                                "Importance": "Normal",
-                                "Subject": "@{body('CallWFRedact')} for Analyse function",
-                                "To": "shubhamangala.k@sonata-software.com"
-                            },
-                            "host": {
-                                "connection": {
-                                    "referenceName": "office365"
-                                }
-                            },
-                            "method": "post",
-                            "path": "/v2/Mail"
-                        },
-                        "runAfter": {
-                            "CallWFRedact": [
-                                "FAILED",
-                                "TIMEDOUT"
-                            ]
-                        },
-                        "type": "ApiConnection"
-                    },
                     "audio_tempfile1": {
                         "inputs": {
                             "audio": "@outputs('staged_redacted_audio_obj')"
@@ -594,7 +595,7 @@
                         {
                             "equals": [
                                 "@outputs('config')?['redact']['CI_REDACT']",
-                                true
+                                false
                             ]
                         }
                     ]
@@ -756,18 +757,28 @@
                 "actions": {
                     "CallWFAnalyse": {
                         "inputs": {
-                            "body": "@outputs('InputForAnalyse')",
-                            "function": {
-                                "connectionName": "azureFunctionOperation-4"
+                            "authentication": {
+                                "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                                "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                                "type": "ActiveDirectoryOAuth"
                             },
-                            "method": "POST"
+                            "body": "@outputs('InputForAnalyse')",
+                            "method": "POST",
+                            "uri": "https://dev-functionappfeb-analyse.azurewebsites.net/api/wf_analyse_HttpTrigger1?code=h3hApCY5-TOfbOjBT_dfso7hFokRE9-_QN8hxHDhjkXkAzFuhk-mHA=="
                         },
                         "runAfter": {
                             "InputForAnalyse": [
                                 "SUCCEEDED"
                             ]
                         },
-                        "type": "Function"
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        },
+                        "type": "Http"
                     },
                     "If-metrics": {
                         "actions": {
@@ -892,30 +903,6 @@
                             ]
                         },
                         "type": "Compose"
-                    },
-                    "Send_Email_If_Analyse_function_fails": {
-                        "inputs": {
-                            "body": {
-                                "Body": "<p>Analyse function failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                                "Importance": "Normal",
-                                "Subject": "@{body('CallWFAnalyse')} for Analyse function",
-                                "To": "shubhamangala.k@sonata-software.com"
-                            },
-                            "host": {
-                                "connection": {
-                                    "referenceName": "office365"
-                                }
-                            },
-                            "method": "post",
-                            "path": "/v2/Mail"
-                        },
-                        "runAfter": {
-                            "CallWFAnalyse": [
-                                "TIMEDOUT",
-                                "FAILED"
-                            ]
-                        },
-                        "type": "ApiConnection"
                     },
                     "nlp_spellcheck_config": {
                         "inputs": {
@@ -1070,6 +1057,7 @@
             },
             "LandingFileData": {
                 "inputs": {
+                    "config_bucket_name": "@{split(split(triggerBody()?['subject'],'/')[4],'-')[0]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[1]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[2]}",
                     "content_type": "@triggerBody()?['data']['contentType']",
                     "event_time": "@{triggerBody()?['event_time']}",
                     "filename": "@last(split(triggerBody()?['subject'],'/'))",
@@ -1091,7 +1079,7 @@
                         }
                     },
                     "method": "get",
-                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/foldersV2/@{encodeURIComponent(encodeURIComponent('/',outputs('staging_config')?['bucket_name'],'/',outputs('staging_config')?['folder_path'],'/'))}",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent(outputs('LandingFileData')?['storageaccountname']))}/foldersV2/@{encodeURIComponent(encodeURIComponent('/',outputs('staging_config')?['bucket_name'],'/',outputs('staging_config')?['folder_path'],'/'))}",
                     "queries": {
                         "nextPageMarker": "",
                         "useFlatListing": false
@@ -1104,61 +1092,13 @@
                 },
                 "type": "ApiConnection"
             },
-            "Send_Email_If_Configure_Function_fails": {
-                "inputs": {
-                    "body": {
-                        "Body": "<p>Configure function failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                        "Importance": "High",
-                        "Subject": "@{outputs('CallWFConfigure')?['statusCode']} for Configure function",
-                        "To": "shubhamangala.k@sonata-software.com"
-                    },
-                    "host": {
-                        "connection": {
-                            "referenceName": "office365"
-                        }
-                    },
-                    "method": "post",
-                    "path": "/v2/Mail"
-                },
-                "runAfter": {
-                    "CallWFConfigure": [
-                        "FAILED",
-                        "TIMEDOUT"
-                    ]
-                },
-                "type": "ApiConnection"
-            },
-            "Send_Email_If_Copy_to_Staging_Fails": {
-                "inputs": {
-                    "body": {
-                        "Body": "<p>Copy of file from Landing to Staging Container failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                        "Importance": "Normal",
-                        "Subject": "File Copy from Landing to Staging Failed",
-                        "To": "shubhamangala.k@sonata-software.com"
-                    },
-                    "host": {
-                        "connection": {
-                            "referenceName": "office365"
-                        }
-                    },
-                    "method": "post",
-                    "path": "/v2/Mail"
-                },
-                "runAfter": {
-                    "CopyBlobToStagingContainer": [
-                        "FAILED",
-                        "TIMEDOUT"
-                    ]
-                },
-                "type": "ApiConnection"
-            },
             "Send_Event": {
                 "inputs": {
                     "parameters": {
                         "eventData": {
                             "contentData": "@outputs('encoded_message')"
                         },
-                        "eventHubName": "ccaeventhub111-hub"
+                        "eventHubName": "dev-eventhub-feb"
                     },
                     "serviceProviderConfiguration": {
                         "connectionName": "eventHub",
@@ -1173,7 +1113,7 @@
                 },
                 "type": "ServiceProvider"
             },
-            "Send_an_email_(V2)_copy_2": {
+            "Send_an_email_(V2)": {
                 "inputs": {
                     "body": {
                         "Body": "<p>Below are the details.</p><br><p>Workflow Execution ID : @{outputs('context')?['execution_id']}.</p><p>Uploaded File name : @{outputs('LandingFileData')?['filename']}.</p><p>Client_ID:@{outputs('GetLandingContainerMetadata')?['client_id']}.</p><p>URL:@{outputs('LandingFileData')?['url']}.</p><p>Blob_Path : @{outputs('LandingFileData')?['full_path']}</p>",
@@ -1190,7 +1130,8 @@
                     "path": "/v2/Mail"
                 },
                 "runAfter": {
-                    "files": [
+                    "For_each": [
+                        "FAILED",
                         "TIMEDOUT",
                         "SKIPPED"
                     ]
@@ -1455,7 +1396,6 @@
                                     "parameters": {
                                         "destinationBlobName": "@{outputs('transcriptcopyinput')?['ContentPath']}/transcript.@{outputs('transcriptcopyinput')?['extension']}",
                                         "destinationContainerName": "@outputs('transcriptcopyinput')?['ContentContainer']",
-                                        "overrideIfExists": true,
                                         "sourceBlobName": "@outputs('transcriptcopyinput')?['StagingBlobPath']",
                                         "sourceContainerName": "@outputs('transcriptcopyinput')?['StagingContainer']"
                                     },
@@ -1960,13 +1900,14 @@
             },
             "context": {
                 "inputs": {
-                    "azure_location": "@appsetting('WEBSITE_Location')",
+                    "azure_location": "@{replace(toLower(appsetting('REGION_NAME')),' ','')}",
                     "azure_subscription": "@split(appsetting('WEBSITE_OWNER_NAME'),'+')[0]",
                     "client_id": "@outputs('GetLandingContainerMetadata')?['client_id']",
-                    "config_bucket_name": "@appsetting('config_bucket_name')",
+                    "config_bucket_name": "@outputs('LandingFileData')?['config_bucket_name']",
                     "execution_id": "@workflow()['run']['name']",
                     "execution_start": "@utcNow()",
                     "step": "@outputs('GetLandingContainerMetadata')?['step']",
+                    "storageaccounturl": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net",
                     "trigger_file": {
                         "bucket_name": "@outputs('LandingFileData')?['landingcontainername']",
                         "content_type": "@outputs('LandingFileData')?['content_type']",
@@ -2043,18 +1984,28 @@
                         "actions": {
                             "CallWFTranscribe": {
                                 "inputs": {
-                                    "body": "@outputs('InputForTranscribe')",
-                                    "function": {
-                                        "connectionName": "azureFunctionOperation-3"
+                                    "authentication": {
+                                        "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                        "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                        "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                                        "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                                        "type": "ActiveDirectoryOAuth"
                                     },
-                                    "method": "POST"
+                                    "body": "@outputs('InputForTranscribe')",
+                                    "method": "POST",
+                                    "uri": "https://dev-functionappfeb-transcribe.azurewebsites.net/api/wf_transcribe_HttpTrigger1?code=2ClOoFDh683MFXMkZKXre929DlTswdENwsedOflIMQ74AzFu8WLnyQ=="
                                 },
                                 "runAfter": {
                                     "InputForTranscribe": [
                                         "SUCCEEDED"
                                     ]
                                 },
-                                "type": "Function"
+                                "runtimeConfiguration": {
+                                    "contentTransfer": {
+                                        "transferMode": "Chunked"
+                                    }
+                                },
+                                "type": "Http"
                             },
                             "InputForTranscribe": {
                                 "inputs": {
@@ -2075,30 +2026,6 @@
                                     ]
                                 },
                                 "type": "Compose"
-                            },
-                            "Send_Email_If_Transcribe_Function_Fails": {
-                                "inputs": {
-                                    "body": {
-                                        "Body": "<p>Transcribe function failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                                        "Importance": "High",
-                                        "Subject": "@{body('CallWFTranscribe')} for Transcribe function",
-                                        "To": "shubhamangala.k@sonata-software.com"
-                                    },
-                                    "host": {
-                                        "connection": {
-                                            "referenceName": "office365"
-                                        }
-                                    },
-                                    "method": "post",
-                                    "path": "/v2/Mail"
-                                },
-                                "runAfter": {
-                                    "CallWFTranscribe": [
-                                        "FAILED",
-                                        "TIMEDOUT"
-                                    ]
-                                },
-                                "type": "ApiConnection"
                             },
                             "asr_config": {
                                 "inputs": {
@@ -2255,18 +2182,28 @@
                         "actions": {
                             "CallWFTranscode": {
                                 "inputs": {
-                                    "body": "@outputs('InputForTranscode')",
-                                    "function": {
-                                        "connectionName": "azureFunctionOperation-2"
+                                    "authentication": {
+                                        "audience": "api://1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                        "clientId": "1623b924-49f6-41ac-b6a9-3c85abae2067",
+                                        "secret": "vmv8Q~cmGP2N0Qc.qZ9vy.AXqtBLDtAGwV~oBcgp",
+                                        "tenant": "f8cd4990-6d46-448a-af3a-2c27c2bf1a28",
+                                        "type": "ActiveDirectoryOAuth"
                                     },
-                                    "method": "POST"
+                                    "body": "@outputs('InputForTranscode')",
+                                    "method": "POST",
+                                    "uri": "https://dev-functionappfeb-transcode.azurewebsites.net/api/wf_transcode_HttpTrigger1?code=F5P00l1OVDY_0CfOmkd_ywuVHWyw6YR02Uy6QYI_KJVfAzFuV6N-cg=="
                                 },
                                 "runAfter": {
                                     "InputForTranscode": [
                                         "SUCCEEDED"
                                     ]
                                 },
-                                "type": "Function"
+                                "runtimeConfiguration": {
+                                    "contentTransfer": {
+                                        "transferMode": "Chunked"
+                                    }
+                                },
+                                "type": "Http"
                             },
                             "If_compressed_audio": {
                                 "actions": {
@@ -2444,30 +2381,6 @@
                                     "staging_config": "@outputs('staging_config')"
                                 },
                                 "type": "Compose"
-                            },
-                            "Send_Email_If_Transcode_Function_Fails": {
-                                "inputs": {
-                                    "body": {
-                                        "Body": "<p>Transcode function failed for @{outputs('context')?['execution_id']}.</p><p>Uploaded file name : @{outputs('LandingFileData')?['filename']}.</p><p>Client:@{outputs('GetLandingContainerMetadata')?['client_id']}</p>",
-                                        "Importance": "Normal",
-                                        "Subject": "@{outputs('CallWFTranscode')?['statusCode']} for Transcode function",
-                                        "To": "shubhamangala.k@sonata-software.com"
-                                    },
-                                    "host": {
-                                        "connection": {
-                                            "referenceName": "office365"
-                                        }
-                                    },
-                                    "method": "post",
-                                    "path": "/v2/Mail"
-                                },
-                                "runAfter": {
-                                    "CallWFTranscode": [
-                                        "FAILED",
-                                        "TIMEDOUT"
-                                    ]
-                                },
-                                "type": "ApiConnection"
                             },
                             "media_info": {
                                 "inputs": "@body('CallWFTranscode')?['media_info']",
