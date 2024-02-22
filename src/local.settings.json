@@ -1,0 +1,30 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "Smtp_serverAddress": "smtp.office365.com",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    "Smtp_password": "Gita@1998",
+    "eventHub_connectionString": "Endpoint=sb://dev-eventhub-feb.servicebus.windows.net/;SharedAccessKeyName=send;SharedAccessKey=TlQkKyW1pAyqH4QM18AWrPmNeTJodUbA0+AEhMhxiO4=;EntityPath=dev-eventhub-feb",
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING": "DefaultEndpointsProtocol=https;AccountName=testrgfeb85c9;AccountKey=VDd6PaVcwh9SMLnM25Afm4cXyLXz0BPPMHW+snXtNpmWrlus4hetxO8uv+TV59ppxGi46FPhgOAI+ASte9aH6g==;EndpointSuffix=core.windows.net",
+    "WEBSITE_SITE_NAME": "test-dev-logicapp",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "WEBSITE_AUTH_AUTO_AAD": "False",
+    "APP_KIND": "workflowApp",
+    "WEBSITE_AUTH_ENABLED": "False",
+    "Smtp_enableSSL": "True",
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=testrgfeb85c9;AccountKey=VDd6PaVcwh9SMLnM25Afm4cXyLXz0BPPMHW+snXtNpmWrlus4hetxO8uv+TV59ppxGi46FPhgOAI+ASte9aH6g==;EndpointSuffix=core.windows.net",
+    "AzureFunctionsJobHost__extensionBundle__id": "Microsoft.Azure.Functions.ExtensionBundle.Workflows",
+    "ScmType": "None",
+    "AzureBlob_blobStorageEndpoint": "https://stgactdevfeb.blob.core.windows.net",
+    "WEBSITE_CONTENTSHARE": "test-dev-logicapp9019",
+    "Smtp_username": "saurav.padhy@sonata-software.com",
+    "FUNCTIONS_RUNTIME_SCALE_MONITORING_ENABLED": "1",
+    "WEBSITE_AUTH_LOGOUT_PATH": "/.auth/logout",
+    "AzureFunctionsJobHost__extensionBundle__version": "[1.*, 2.0.0)",
+    "WEBSITE_SLOT_NAME": "Production",
+    "Smtp_port": "587",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=ec9243c2-5fe4-495c-aee1-88c3a5d5374c;IngestionEndpoint=https://centralindia-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralindia.livediagnostics.monitor.azure.com/",
+    "WEBSITE_NODE_DEFAULT_VERSION": "18.12.1",
+    "REMOTEDEBUGGINGVERSION": "16.0.33328.57"
+  }
+}

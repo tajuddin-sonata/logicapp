@@ -1,0 +1,2840 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "actions": {
+      "LandingFileData": {
+        "type": "Compose",
+        "inputs": {
+          "storageaccountname": "@last(split(triggerBody()?['topic'],'/'))",
+          "landingcontainername": "@split(triggerBody()?['subject'],'/')[4]",
+          "filename": "@last(split(triggerBody()?['subject'],'/'))",
+          "version": "@{triggerBody()?['data']['eTag']}",
+          "event_time": "@{triggerBody()?['event_time']}",
+          "content_type": "@triggerBody()?['data']['contentType']",
+          "size": "@triggerBody()?['data']['contentLength']",
+          "url": "@triggerBody()?['data']['url']",
+          "full_path": "@triggerBody()?['subject']",
+          "config_bucket_name": "@{split(split(triggerBody()?['subject'],'/')[4],'-')[0]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[1]}-@{split(split(triggerBody()?['subject'],'/')[4],'-')[2]}"
+        },
+        "runAfter": {}
+      },
+      "HTTPRequestForMetadata": {
+        "type": "Http",
+        "inputs": {
+          "uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('LandingFileData')?['landingcontainername']}?restype=container&comp=metadata",
+          "method": "GET",
+          "headers": {
+            "x-ms-blob-type": "BlockBlob",
+            "x-ms-version": "2019-02-02",
+            "x-ms-date": "@{formatDateTime(utcNow(),'r')}"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com"
+          }
+        },
+        "runAfter": {
+          "LandingFileData": [
+            "SUCCEEDED"
+          ]
+        },
+        "runtimeConfiguration": {
+          "contentTransfer": {
+            "transferMode": "Chunked"
+          }
+        }
+      },
+      "GetLandingContainerMetadata": {
+        "type": "Compose",
+        "inputs": {
+          "client_id": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_client']))",
+          "step": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_step']))",
+          "type": "@toLower(concat(outputs('HTTPRequestForMetadata')?['headers']['x-ms-meta-ci_media_type']))"
+        },
+        "runAfter": {
+          "HTTPRequestForMetadata": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "context": {
+        "type": "Compose",
+        "inputs": {
+          "azure_subscription": "@split(appsetting('WEBSITE_OWNER_NAME'),'+')[0]",
+          "azure_location": "@{replace(toLower(appsetting('REGION_NAME')),' ','')}",
+          "workflow_id": "@appsetting('WEBSITE_SITE_NAME')",
+          "execution_id": "@workflow()['run']['name']",
+          "config_bucket_name": "@outputs('LandingFileData')?['config_bucket_name']",
+          "execution_start": "@utcNow()",
+          "client_id": "@outputs('GetLandingContainerMetadata')?['client_id']",
+          "storageaccounturl": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net",
+          "step": "@outputs('GetLandingContainerMetadata')?['step']",
+          "type": "@outputs('GetLandingContainerMetadata')?['type']",
+          "trigger_file": {
+            "bucket_name": "@outputs('LandingFileData')?['landingcontainername']",
+            "full_path": "@outputs('LandingFileData')?['filename']",
+            "name": "@outputs('LandingFileData')?['filename']",
+            "version": "@outputs('LandingFileData')?['version']",
+            "size": "@outputs('LandingFileData')?['size']",
+            "content_type": "@outputs('LandingFileData')?['content_type']",
+            "upload_timestamp": "@outputs('LandingFileData')?['event_time']"
+          }
+        },
+        "runAfter": {
+          "GetLandingContainerMetadata": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "InputForWFConfigure": {
+        "type": "Compose",
+        "inputs": {
+          "context": "@outputs('context')",
+          "input_files": {
+            "source_file": {
+              "bucket_name": "@{outputs('LandingFileData')?['landingcontainername']}",
+              "full_path": "@{outputs('LandingFileData')?['filename']}",
+              "version": "@{outputs('LandingFileData')?['version']}",
+              "uploaded": "@{outputs('LandingFileData')?['event_time']}"
+            }
+          },
+          "function_config": {
+            "config_bucket_name": "@outputs('context')?['config_bucket_name']",
+            "label_tags": "@parameters('INIT-bucket_label_tags')",
+            "functions": "@parameters('INIT-Function')"
+          }
+        },
+        "runAfter": {
+          "context": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "CallWFConfigure": {
+        "type": "Http",
+        "inputs": {
+          "uri": "$CONFIGURE_FUNC_URL",
+          "method": "POST",
+          "body": "@outputs('InputForWFConfigure')"
+        },
+        "runAfter": {
+          "InputForWFConfigure": [
+            "SUCCEEDED"
+          ]
+        },
+        "runtimeConfiguration": {
+          "contentTransfer": {
+            "transferMode": "Chunked"
+          }
+        }
+      },
+      "buckets": {
+        "type": "Compose",
+        "inputs": {
+          "landing": "@outputs('context')?['trigger_file']['bucket_name']",
+          "staging": "@body('CallWFConfigure')?['client_buckets']['staging']",
+          "content": "@body('CallWFConfigure')?['client_buckets']['content']"
+        },
+        "runAfter": {
+          "CallWFConfigure": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "config": {
+        "type": "Compose",
+        "inputs": "@body('CallWFConfigure')?['client_config']",
+        "runAfter": {
+          "buckets": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "context.interaction_id": {
+        "type": "Compose",
+        "inputs": {
+          "interaction_id": "@body('CallWFConfigure')?['interaction_id']"
+        },
+        "runAfter": {
+          "config": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "context1": {
+        "type": "Compose",
+        "inputs": "@union(outputs('context'),outputs('context.interaction_id'))",
+        "runAfter": {
+          "context.interaction_id": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staging_config": {
+        "type": "Compose",
+        "inputs": {
+          "file_prefix": "@parameters('INIT-staging_config')?['file_prefix']",
+          "bucket_name": "@outputs('buckets')?['staging']",
+          "folder_path": "@body('CallWFConfigure')?['staging_folder_path']"
+        },
+        "runAfter": {
+          "context1": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "content_config": {
+        "type": "Compose",
+        "inputs": {
+          "bucket_name": "@outputs('buckets')?['content']",
+          "folder_path": "@body('CallWFConfigure')?['content_folder_path']"
+        },
+        "runAfter": {
+          "staging_config": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged_media_obj": {
+        "type": "Compose",
+        "inputs": {
+          "bucket": "@outputs('CopyBlobToStagingContainer')?['body']['containerName']",
+          "object": "@outputs('CopyBlobToStagingContainer')?['body']['name']",
+          "uploaded_at": "@outputs('CopyBlobToStagingContainer')?['body']['creationTime']",
+          "generation": "@json(outputs('CopyBlobToStagingContainer')?['body']['eTag'])"
+        },
+        "runAfter": {
+          "CopyBlobToStagingContainer": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "tempfile": {
+        "type": "Compose",
+        "inputs": {
+          "tempfile": ""
+        },
+        "runAfter": {
+          "staged_media_obj": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "IfTypeAudioVideoTranscript": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "audio"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "video"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "chat"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "transcript"
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "IfTypeAudio": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "audio"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "workingfileaudio": {
+                "type": "Compose",
+                "inputs": {
+                  "audio": "@outputs('staged_media_obj')"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfTypeVideo": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "video"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "workingfilevideo": {
+                "type": "Compose",
+                "inputs": {
+                  "video": "@outputs('staged_media_obj')"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfTypeChatOrTranscript": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "chat"
+                  ]
+                },
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "transcript"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "workingfiletranscript": {
+                "type": "Compose",
+                "inputs": {
+                  "transcript": "@outputs('staged_media_obj')"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "ifaudiotype": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('workingfileaudio'),null),outputs('tempfile'),outputs('workingfileaudio'))",
+            "runAfter": {
+              "IfTypeAudio": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "ifvideotype": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('workingfilevideo'),null),outputs('tempfile'),outputs('workingfilevideo'))",
+            "runAfter": {
+              "IfTypeVideo": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "iftranscripttype": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('workingfiletranscript'),null),outputs('tempfile'),outputs('workingfiletranscript'))",
+            "runAfter": {
+              "IfTypeChatOrTranscript": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "tempfile": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "working_files": {
+        "type": "Compose",
+        "inputs": "@removeProperty(union(outputs('ifaudiotype'),outputs('ifvideotype'),outputs('iftranscripttype')),'tempfile')",
+        "runAfter": {
+          "IfTypeAudioVideoTranscript": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged_files": {
+        "type": "Compose",
+        "inputs": {
+          "staged_media": "@outputs('staged_media_obj')"
+        },
+        "runAfter": {
+          "working_files": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "orchestrate_flow-If-Audio-Video-Chat-Transcript": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "audio"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "video"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "chat"
+              ]
+            },
+            {
+              "equals": [
+                "@outputs('context1')?['type']",
+                "transcript"
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "media_flow-If-Audio-Video": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "audio"
+                  ]
+                },
+                {
+                  "equals": [
+                    "@outputs('context1')?['type']",
+                    "video"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "InputForTranscode": {
+                "type": "Compose",
+                "inputs": {
+                  "context": "@outputs('context1')",
+                  "staging_config": "@outputs('staging_config')",
+                  "input_files": {
+                    "media": {
+                      "bucket_name": "@outputs('staged_files')?['staged_media']['bucket']",
+                      "full_path": "@outputs('staged_files')?['staged_media']['object']",
+                      "version": "@outputs('staged_files')?['staged_media']['generation']"
+                    }
+                  },
+                  "function_config": {
+                    "signing_account": "@outputs('config')?['transcode_media']['CI_SA_EMAIL']"
+                  }
+                }
+              },
+              "CallWFTranscode": {
+                "type": "Http",
+                "inputs": {
+                  "uri": "$TRANSCODE_FUNC_URL",
+                  "method": "POST",
+                  "body": "@outputs('InputForTranscode')"
+                },
+                "runAfter": {
+                  "InputForTranscode": [
+                    "SUCCEEDED"
+                  ]
+                },
+                "runtimeConfiguration": {
+                  "contentTransfer": {
+                    "transferMode": "Chunked"
+                  }
+                }
+              },
+              "media_info": {
+                "type": "Compose",
+                "inputs": "@body('CallWFTranscode')?['media_info']",
+                "runAfter": {
+                  "CallWFTranscode": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "If_compressed_audio": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    {
+                      "contains": [
+                        "@body('CallWFTranscode')?['staged_files']",
+                        "compressed_audio"
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "staged_compressed_audio_obj": {
+                    "type": "Compose",
+                    "inputs": {
+                      "bucket": "@body('CallWFTranscode')?['staged_files']['compressed_audio']['bucket_name']",
+                      "object": "@body('CallWFTranscode')?['staged_files']['compressed_audio']['full_path']",
+                      "generation": "@json(body('CallWFTranscode')?['staged_files']['compressed_audio']['version'])",
+                      "uploaded_at": "@body('CallWFTranscode')?['staged_files']['compressed_audio']['uploaded']"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "media_info": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "If_waveform": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    {
+                      "contains": [
+                        "@body('CallWFTranscode')?['staged_files']",
+                        "waveform"
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "staged_waveform_obj": {
+                    "type": "Compose",
+                    "inputs": {
+                      "bucket": "@body('CallWFTranscode')?['staged_files']['waveform']['bucket_name']",
+                      "object": "@body('CallWFTranscode')?['staged_files']['waveform']['full_path']",
+                      "generation": "@json(body('CallWFTranscode')?['staged_files']['waveform']['version'])",
+                      "uploaded_at": "@body('CallWFTranscode')?['staged_files']['waveform']['uploaded']"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "media_info": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "If_video_with_added_blank_audio": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    {
+                      "contains": [
+                        "@body('CallWFTranscode')?['staged_files']",
+                        "video_with_added_blank_audio"
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "staged_video_with_added_blank_audio_obj": {
+                    "type": "Compose",
+                    "inputs": {
+                      "bucket": "@body('CallWFTranscode')?['staged_files']['video_with_added_blank_audio']['bucket_name']",
+                      "object": "@body('CallWFTranscode')?['staged_files']['video_with_added_blank_audio']['full_path']",
+                      "generation": "@json(body('CallWFTranscode')?['staged_files']['video_with_added_blank_audio']['version'])",
+                      "uploaded_at": "@body('CallWFTranscode')?['staged_files']['video_with_added_blank_audio']['uploaded']"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "media_info": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "If_compressed_video": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    {
+                      "contains": [
+                        "@body('CallWFTranscode')?['staged_files']",
+                        "compressed_video"
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "staged_compressed_video_obj": {
+                    "type": "Compose",
+                    "inputs": {
+                      "bucket": "@body('CallWFTranscode')?['staged_files']['compressed_video']['bucket_name']",
+                      "object": "@body('CallWFTranscode')?['staged_files']['compressed_video']['full_path']",
+                      "generation": "@json(body('CallWFTranscode')?['staged_files']['compressed_video']['version'])",
+                      "uploaded_at": "@body('CallWFTranscode')?['staged_files']['compressed_video']['uploaded']"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "media_info": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "If_temp_audio": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    {
+                      "contains": [
+                        "@body('CallWFTranscode')?['staged_files']",
+                        "temp_audio"
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "staged_temp_audio_obj": {
+                    "type": "Compose",
+                    "inputs": {
+                      "bucket": "@body('CallWFTranscode')?['staged_files']['temp_audio']['bucket_name']",
+                      "object": "@body('CallWFTranscode')?['staged_files']['temp_audio']['full_path']",
+                      "generation": "@json(body('CallWFTranscode')?['staged_files']['temp_audio']['version'])",
+                      "uploaded_at": "@body('CallWFTranscode')?['staged_files']['temp_audio']['uploaded']"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "media_info": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempworkingfiles1": {
+                "type": "Compose",
+                "inputs": {
+                  "audio": "@outputs('staged_compressed_audio_obj')"
+                },
+                "runAfter": {
+                  "staged_files1": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "working_files1": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempworkingfiles1')?['audio'],null),outputs('tempfile'),outputs('tempworkingfiles1'))",
+                "runAfter": {
+                  "tempworkingfiles1": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "staged_files1": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempstagedfiles1')?['compressed_audio'],null),outputs('tempfile'),outputs('tempstagedfiles1'))",
+                "runAfter": {
+                  "tempstagedfiles1": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempstagedfiles1": {
+                "type": "Compose",
+                "inputs": {
+                  "compressed_audio": "@outputs('staged_compressed_audio_obj')"
+                },
+                "runAfter": {
+                  "If_compressed_audio": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "working_files2": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempworkingfiles2')?['waveform'],null),outputs('tempfile'),outputs('tempworkingfiles2'))",
+                "runAfter": {
+                  "tempworkingfiles2": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempworkingfiles2": {
+                "type": "Compose",
+                "inputs": {
+                  "waveform": "@outputs('staged_waveform_obj')"
+                },
+                "runAfter": {
+                  "staged_files2": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "staged_files2": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempstagedfiles2')?['waveform'],null),outputs('tempfile'),outputs('tempstagedfiles2'))",
+                "runAfter": {
+                  "tempstagedfiles2": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempstagedfiles2": {
+                "type": "Compose",
+                "inputs": {
+                  "waveform": "@outputs('staged_waveform_obj')"
+                },
+                "runAfter": {
+                  "If_waveform": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempstagedfiles3": {
+                "type": "Compose",
+                "inputs": {
+                  "video_with_added_blank_audio": "@outputs('staged_video_with_added_blank_audio_obj')"
+                },
+                "runAfter": {
+                  "If_video_with_added_blank_audio": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempstagedfiles4": {
+                "type": "Compose",
+                "inputs": {
+                  "compressed_video": "@outputs('staged_compressed_video_obj')"
+                },
+                "runAfter": {
+                  "If_compressed_video": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "staged_files3": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempstagedfiles3')?['video_with_added_blank_audio'],null),outputs('tempfile'),outputs('tempstagedfiles3'))",
+                "runAfter": {
+                  "tempstagedfiles3": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "staged_files4": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempstagedfiles4')?['compressed_video'],null),outputs('tempfile'),outputs('tempstagedfiles4'))",
+                "runAfter": {
+                  "tempstagedfiles4": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempstagedfiles5": {
+                "type": "Compose",
+                "inputs": {
+                  "temp_audio": "@outputs('staged_temp_audio_obj')"
+                },
+                "runAfter": {
+                  "If_temp_audio": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempworkingfiles3": {
+                "type": "Compose",
+                "inputs": {
+                  "video": "@outputs('staged_video_with_added_blank_audio_obj')"
+                },
+                "runAfter": {
+                  "staged_files3": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempworkingfiles4": {
+                "type": "Compose",
+                "inputs": {
+                  "video": "@outputs('staged_compressed_video_obj')"
+                },
+                "runAfter": {
+                  "staged_files4": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "staged_files5": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempstagedfiles5')?['temp_audio'],null),outputs('tempfile'),outputs('tempstagedfiles5'))",
+                "runAfter": {
+                  "tempstagedfiles5": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "working_files4": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempworkingfiles4')?['video'],null),outputs('tempfile'),outputs('tempworkingfiles4'))",
+                "runAfter": {
+                  "tempworkingfiles4": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "working_files3": {
+                "type": "Compose",
+                "inputs": "@if(equals(outputs('tempworkingfiles3')?['video'],null),outputs('tempfile'),outputs('tempworkingfiles3'))",
+                "runAfter": {
+                  "tempworkingfiles3": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {
+                "If_Chat_Transcript": {
+                  "type": "If",
+                  "expression": {
+                    "or": [
+                      {
+                        "equals": [
+                          "@outputs('context1')?['type']",
+                          "chat"
+                        ]
+                      },
+                      {
+                        "equals": [
+                          "@outputs('context1')?['type']",
+                          "transcript"
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {},
+                  "else": {
+                    "actions": {
+                      "RasieException": {
+                        "type": "Compose",
+                        "inputs": "@{outputs('context1')?['type']} not from an accepted landing container type: [audio,video,chat,transcript,metadata]"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "staged_files6": {
+            "type": "Compose",
+            "inputs": "@removeProperty(union(outputs('staged_files'),outputs('staged_files1'),outputs('staged_files2'),outputs('staged_files3'),outputs('staged_files4'),outputs('staged_files5')),'tempfile')",
+            "runAfter": {
+              "media_flow-If-Audio-Video": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files5": {
+            "type": "Compose",
+            "inputs": "@removeProperty(union(outputs('working_files'),outputs('working_files1'),outputs('working_files2'),outputs('working_files3'),outputs('working_files4')),'tempfile')",
+            "runAfter": {
+              "staged_files6": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If_transcribe_media_CI_TRANSCRIPTION_true": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "equals": [
+                    "@outputs('config')?['transcribe_media']['CI_TRANSCRIPTION']",
+                    true
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "set_transcribe_args_type": {
+                "type": "Compose",
+                "inputs": "@if(greater(outputs('media_info')?['video_streams'], 0), 'video', 'audio')"
+              },
+              "set_transcribe_args_asr_config_raw": {
+                "type": "Compose",
+                "inputs": "@outputs('config')?['transcribe_media']['CI_DEEPGRAM_FEATURES']",
+                "runAfter": {
+                  "set_transcribe_args_type": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "set_transcribe_args_asr_config_typed": {
+                "type": "Compose",
+                "inputs": "@if(contains(outputs('set_transcribe_args_asr_config_raw'),outputs('set_transcribe_args_type')),outputs('set_transcribe_args_asr_config_raw')?[outputs('set_transcribe_args_type')],outputs('set_transcribe_args_asr_config_raw'))",
+                "runAfter": {
+                  "set_transcribe_args_asr_config_raw": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "set_transcribe_args_asr_url_query": {
+                "type": "Compose",
+                "inputs": "@if(contains(outputs('config')?['transcribe_media'],'CI_ASR_ENDPOINT_QUERY'),outputs('config')?['transcribe_media']['CI_ASR_ENDPOINT_QUERY'],'/v2')",
+                "runAfter": {
+                  "set_transcribe_args_asr_config_typed": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "asr_config": {
+                "type": "Compose",
+                "inputs": {
+                  "api_key": "89954365f96e90d5a07fcacacb48bd17601ab3be",
+                  "features": "@outputs('set_transcribe_args_asr_config_typed')"
+                },
+                "runAfter": {
+                  "set_transcribe_args_asr_url_query": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "transcript_config_raw": {
+                "type": "Compose",
+                "inputs": "@outputs('config')?['transcribe_media']['CI_NORMALISE_OPTIONS']",
+                "runAfter": {
+                  "asr_config": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "transcript_config_typed": {
+                "type": "Compose",
+                "inputs": "@if(contains(outputs('transcript_config_raw'),outputs('set_transcribe_args_type')),outputs('transcript_config_raw')?[outputs('set_transcribe_args_type')],outputs('transcript_config_raw'))",
+                "runAfter": {
+                  "transcript_config_raw": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "transcript_config": {
+                "type": "Compose",
+                "inputs": {
+                  "channel_map": [
+                    "@outputs('transcript_config_typed')?['channel_map']['1']",
+                    "@outputs('transcript_config_typed')?['channel_map']['2']"
+                  ]
+                },
+                "runAfter": {
+                  "transcript_config_typed": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "audio_input_file": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket_name": "@outputs('staged_files6')?['staged_media']['bucket']",
+                  "full_path": "@outputs('staged_files6')?['staged_media']['object']",
+                  "version": "@outputs('staged_files6')?['staged_media']['generation']"
+                },
+                "runAfter": {
+                  "transcript_config": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "temp_audio_input_file": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket_name": "@if(equals(outputs('staged_files6')?['temp_audio'],null),'',outputs('staged_files6')?['temp_audio']['bucket'])",
+                  "full_path": "@if(equals(outputs('staged_files6')?['temp_audio'],null),'',outputs('staged_files6')?['temp_audio']['object'])",
+                  "version": "@if(equals(outputs('staged_files6')?['temp_audio'],null),'',outputs('staged_files6')?['temp_audio']['generation'])"
+                },
+                "runAfter": {
+                  "audio_input_file": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "input_file": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket_name": "@if(equals(outputs('temp_audio_input_file')?['bucket_name'],''),outputs('audio_input_file')?['bucket_name'],outputs('temp_audio_input_file')?['bucket_name'])",
+                  "full_path": "@if(equals(outputs('temp_audio_input_file')?['full_path'],''),outputs('audio_input_file')?['full_path'],outputs('temp_audio_input_file')?['full_path'])",
+                  "version": "@if(equals(outputs('temp_audio_input_file')?['version'],''),outputs('audio_input_file')?['version'],outputs('temp_audio_input_file')?['version'])"
+                },
+                "runAfter": {
+                  "temp_audio_input_file": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "InputForTranscribe": {
+                "type": "Compose",
+                "inputs": {
+                  "context": "@outputs('context1')",
+                  "staging_config": "@outputs('staging_config')",
+                  "input_files": {
+                    "audio": "@outputs('input_file')"
+                  },
+                  "function_config": {
+                    "signing_account": "@outputs('config')?['transcode_media']['CI_SA_EMAIL']",
+                    "asr_config": "@outputs('asr_config')",
+                    "transcript_config": "@outputs('transcript_config')"
+                  }
+                },
+                "runAfter": {
+                  "input_file": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "CallWFTranscribe": {
+                "type": "Http",
+                "inputs": {
+                  "uri": "$TRANSCRIBE_FUNC_URL",
+                  "method": "POST",
+                  "body": "@outputs('InputForTranscribe')"
+                },
+                "runAfter": {
+                  "InputForTranscribe": [
+                    "SUCCEEDED"
+                  ]
+                },
+                "runtimeConfiguration": {
+                  "contentTransfer": {
+                    "transferMode": "Chunked"
+                  }
+                }
+              },
+              "staged_transcript_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "transcript": {
+                    "bucket": "@outputs('CallWFTranscribe')?['body']['staged_files']['transcript']['bucket_name']",
+                    "object": "@outputs('CallWFTranscribe')?['body']['staged_files']['transcript']['full_path']",
+                    "generation": "@json(outputs('CallWFTranscribe')?['body']['staged_files']['transcript']['version'])",
+                    "uploaded_at": "@outputs('CallWFTranscribe')?['body']['staged_files']['transcript']['uploaded']"
+                  }
+                },
+                "runAfter": {
+                  "CallWFTranscribe": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "working_files5": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {
+            "If_Metadata": {
+              "type": "If",
+              "expression": {
+                "or": [
+                  {
+                    "equals": [
+                      "@outputs('context1')?['type']",
+                      "metadata"
+                    ]
+                  }
+                ]
+              },
+              "actions": {},
+              "else": {
+                "actions": {
+                  "RaiseAnException": {
+                    "type": "Compose",
+                    "inputs": "@{outputs('context1')?['type']} not from an accepted landing container type: [audio,video,chat,transcript,metadata]"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "staged_files": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "working_files6": {
+        "type": "Compose",
+        "inputs": "@if(equals(outputs('config')?['transcribe_media']['CI_TRANSCRIPTION'],true),union(outputs('working_files5'),outputs('staged_transcript_obj')),outputs('working_files5'))",
+        "runAfter": {
+          "staged_files7": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged_files7": {
+        "type": "Compose",
+        "inputs": "@if(equals(outputs('config')?['transcribe_media']['CI_TRANSCRIPTION'],true),union(outputs('staged_files6'),outputs('staged_transcript_obj')),outputs('staged_files6'))",
+        "runAfter": {
+          "orchestrate_flow-If-Audio-Video-Chat-Transcript": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "If_CI_TRANSCRIPTION_true-Analyse": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "equals": [
+                "@outputs('config')?['transcribe_media']['CI_TRANSCRIPTION']",
+                true
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "nlp_spellcheck_config": {
+            "type": "Compose",
+            "inputs": {
+              "nlp_ignore": "@if(contains(outputs('config')?['analyse_transcript']['CI_NLP_OPTIONS'],'nlp_ignore'),outputs('config')?['analyse_transcript']['CI_NLP_OPTIONS']['nlp_ignore'],'[]')",
+              "rule_patterns": "@if(contains(outputs('config')?['analyse_transcript']['CI_NLP_OPTIONS'],'rule_patterns'),outputs('config')?['analyse_transcript']['CI_NLP_OPTIONS']['rule_patterns'],'[]')",
+              "add_words": "@if(contains(outputs('config')?['analyse_transcript'],'CI_SPELLCHECK_OPTIONS'),outputs('config')?['analyse_transcript']['CI_SPELLCHECK_OPTIONS']['add_words'],'[]')"
+            }
+          },
+          "InputForAnalyse": {
+            "type": "Compose",
+            "inputs": {
+              "context": "@outputs('context1')",
+              "staging_config": "@outputs('staging_config')",
+              "input_files": {
+                "transcript": {
+                  "bucket_name": "@outputs('staged_files7')?['transcript']['bucket']",
+                  "full_path": "@outputs('staged_files7')?['transcript']['object']",
+                  "version": "@outputs('staged_files7')?['transcript']['generation']"
+                }
+              },
+              "function_config": {
+                "nlp_config": {
+                  "nlp_ignore": "@outputs('nlp_spellcheck_config')?['nlp_ignore']",
+                  "rule_patterns": "@outputs('nlp_spellcheck_config')?['rule_patterns']"
+                },
+                "spellcheck_config": {
+                  "add_words": "@outputs('nlp_spellcheck_config')?['add_words']"
+                }
+              }
+            },
+            "runAfter": {
+              "nlp_spellcheck_config": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "CallWFAnalyse": {
+            "type": "Http",
+            "inputs": {
+              "uri": "$ANALYSE_FUNC_URL",
+              "method": "POST",
+              "body": "@outputs('InputForAnalyse')"
+            },
+            "runAfter": {
+              "InputForAnalyse": [
+                "SUCCEEDED"
+              ]
+            },
+            "runtimeConfiguration": {
+              "contentTransfer": {
+                "transferMode": "Chunked"
+              }
+            }
+          },
+          "If-metrics": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFAnalyse')?['staged_files']",
+                    "metrics"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_metrics_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFAnalyse')?['staged_files']['metrics']['bucket_name']",
+                  "object": "@body('CallWFAnalyse')?['staged_files']['metrics']['full_path']",
+                  "generation": "@json(body('CallWFAnalyse')?['staged_files']['metrics']['version'])",
+                  "uploaded_at": "@body('CallWFAnalyse')?['staged_files']['metrics']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFAnalyse": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If-nlp": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFAnalyse')?['staged_files']",
+                    "nlp"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_nlp_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFAnalyse')?['staged_files']['nlp']['bucket_name']",
+                  "object": "@body('CallWFAnalyse')?['staged_files']['nlp']['full_path']",
+                  "generation": "@json(body('CallWFAnalyse')?['staged_files']['nlp']['version'])",
+                  "uploaded_at": "@body('CallWFAnalyse')?['staged_files']['nlp']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFAnalyse": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If-spellchecked_transcript": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFAnalyse')?['staged_files']",
+                    "spellchecked_transcript"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_spellchecked_transcript_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFAnalyse')?['staged_files']['spellchecked_transcript']['bucket_name']",
+                  "object": "@body('CallWFAnalyse')?['staged_files']['spellchecked_transcript']['full_path']",
+                  "generation": "@json(body('CallWFAnalyse')?['staged_files']['spellchecked_transcript']['version'])",
+                  "uploaded_at": "@body('CallWFAnalyse')?['staged_files']['spellchecked_transcript']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFAnalyse": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "tempstagedfiles6": {
+            "type": "Compose",
+            "inputs": {
+              "metrics": "@outputs('staged_metrics_obj')"
+            },
+            "runAfter": {
+              "If-metrics": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files8": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempstagedfiles6')?['metrics'],null),outputs('tempfile'),outputs('tempstagedfiles6'))",
+            "runAfter": {
+              "tempstagedfiles6": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files7": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempstagedfiles6')?['metrics'],null),outputs('tempfile'),outputs('tempstagedfiles6'))",
+            "runAfter": {
+              "staged_files8": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "tempstagedfiles7": {
+            "type": "Compose",
+            "inputs": {
+              "nlp": "@outputs('staged_nlp_obj')"
+            },
+            "runAfter": {
+              "If-nlp": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files9": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempstagedfiles7')?['nlp'],null),outputs('tempfile'),outputs('tempstagedfiles7'))",
+            "runAfter": {
+              "tempstagedfiles7": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files8": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempstagedfiles7')?['nlp'],null),outputs('tempfile'),outputs('tempstagedfiles7'))",
+            "runAfter": {
+              "staged_files9": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "tempstagedfiles8": {
+            "type": "Compose",
+            "inputs": {
+              "spellchecked_transcript": "@outputs('staged_spellchecked_transcript_obj')"
+            },
+            "runAfter": {
+              "If-spellchecked_transcript": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files10": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempstagedfiles8')?['spellchecked_transcript'],null),outputs('tempfile'),outputs('tempstagedfiles8'))",
+            "runAfter": {
+              "tempstagedfiles8": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "tempworkingfile": {
+            "type": "Compose",
+            "inputs": {
+              "transcript": "@outputs('staged_spellchecked_transcript_obj')"
+            },
+            "runAfter": {
+              "staged_files10": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files9": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('tempworkingfile')?['transcript'],null),outputs('tempfile'),outputs('tempworkingfile'))",
+            "runAfter": {
+              "tempworkingfile": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "working_files6": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged_files11": {
+        "type": "Compose",
+        "inputs": "@removeProperty(if(equals(outputs('config')?['transcribe_media']['CI_TRANSCRIPTION'],true),union(outputs('staged_files7'),outputs('staged_files8'),outputs('staged_files9'),outputs('staged_files10')),outputs('staged_files7')),'tempfile')",
+        "runAfter": {
+          "If_CI_TRANSCRIPTION_true-Analyse": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "working_files10": {
+        "type": "Compose",
+        "inputs": "@removeProperty(if(equals(outputs('config')?['transcribe_media']['CI_TRANSCRIPTION'],true),union(outputs('working_files6'),outputs('working_files7'),outputs('working_files8'),outputs('working_files9')),outputs('working_files6')),'tempfile')",
+        "runAfter": {
+          "staged_files11": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "If-CI_REDACT-true": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "equals": [
+                "@outputs('config')?['redact']['CI_REDACT']",
+                true
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "redaction_input_files-nlp-transcript": {
+            "type": "Compose",
+            "inputs": {
+              "nlp": {
+                "bucket_name": "@outputs('working_files10')?['nlp']['bucket']",
+                "full_path": "@outputs('working_files10')?['nlp']['object']",
+                "version": "@outputs('working_files10')?['nlp']['generation']"
+              },
+              "transcript": {
+                "bucket_name": "@outputs('working_files10')?['transcript']['bucket']",
+                "full_path": "@outputs('working_files10')?['transcript']['object']",
+                "version": "@outputs('working_files10')?['transcript']['generation']"
+              }
+            }
+          },
+          "IfAudioInWorkingFile": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files10')",
+                    "audio"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "tempredactaudioinput": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket_name": "@outputs('working_files10')?['audio']['bucket']",
+                  "full_path": "@outputs('working_files10')?['audio']['object']",
+                  "version": "@outputs('working_files10')?['audio']['generation']"
+                }
+              },
+              "redactaudioinput": {
+                "type": "Compose",
+                "inputs": {
+                  "audio": "@outputs('tempredactaudioinput')"
+                },
+                "runAfter": {
+                  "tempredactaudioinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "redaction_input_files-nlp-transcript": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redaction_input_files.audio": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redactaudioinput')?['audio'],null),outputs('tempfile'),outputs('redactaudioinput'))",
+            "runAfter": {
+              "IfAudioInWorkingFile": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "IfVideoInWorkingFile": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files10')",
+                    "video"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "tempredactvideoinput": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket_name": "@outputs('working_files10')?['audio']['bucket']",
+                  "full_path": "@outputs('working_files10')?['audio']['object']",
+                  "version": "@outputs('working_files10')?['audio']['generation']"
+                }
+              },
+              "redactvideoinput": {
+                "type": "Compose",
+                "inputs": {
+                  "video": "@outputs('tempredactaudioinput')"
+                },
+                "runAfter": {
+                  "tempredactvideoinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "redaction_input_files.audio": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redaction_input_files.video": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redactvideoinput')?['video'],null),outputs('tempfile'),outputs('redactvideoinput'))",
+            "runAfter": {
+              "IfVideoInWorkingFile": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redaction_input_files": {
+            "type": "Compose",
+            "inputs": "@removeProperty(union(outputs('redaction_input_files-nlp-transcript'),outputs('redaction_input_files.audio'),outputs('redaction_input_files.video')),'tempfile')",
+            "runAfter": {
+              "redaction_input_files.video": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "InputForRedact": {
+            "type": "Compose",
+            "inputs": {
+              "context": "@outputs('context1')",
+              "staging_config": "@outputs('staging_config')",
+              "input_files": "@outputs('redaction_input_files')",
+              "function_config": {
+                "signing_account": "@outputs('config')?['redact']['CI_SA_EMAIL']",
+                "redact_config": {
+                  "types_to_redact": "@if(contains(outputs('config')?['redact']['CI_REDACT_OPTIONS'],'types_to_redact'),outputs('config')['redact']['CI_REDACT_OPTIONS']['types_to_redact'],'[]')"
+                }
+              }
+            },
+            "runAfter": {
+              "redaction_input_files": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "CallWFRedact": {
+            "type": "Http",
+            "inputs": {
+              "uri": "$REDACT_FUNC_URL",
+              "method": "POST",
+              "body": "@outputs('InputForRedact')"
+            },
+            "runAfter": {
+              "InputForRedact": [
+                "SUCCEEDED"
+              ]
+            },
+            "runtimeConfiguration": {
+              "contentTransfer": {
+                "transferMode": "Chunked"
+              }
+            }
+          },
+          "If_redacted_transcript": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFRedact')?['staged_files']",
+                    "redacted_transcript"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_redacted_transcript_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFRedact')?['staged_files']['redacted_transcript']['bucket_name']",
+                  "object": "@body('CallWFRedact')?['staged_files']['redacted_transcript']['full_path']",
+                  "generation": "@json(body('CallWFRedact')?['staged_files']['redacted_transcript']['version'])",
+                  "uploaded_at": "@body('CallWFRedact')?['staged_files']['redacted_transcript']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFRedact": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If_redacted_nlp": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFRedact')?['staged_files']",
+                    "redacted_nlp"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_redacted_nlp_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFRedact')?['staged_files']['redacted_nlp']['bucket_name']",
+                  "object": "@body('CallWFRedact')?['staged_files']['redacted_nlp']['full_path']",
+                  "generation": "@json(body('CallWFRedact')?['staged_files']['redacted_nlp']['version'])",
+                  "uploaded_at": "@body('CallWFRedact')?['staged_files']['redacted_nlp']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFRedact": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If_redacted_audio": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFRedact')?['staged_files']",
+                    "redacted_audio"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_redacted_audio_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFRedact')?['staged_files']['redacted_audio']['bucket_name']",
+                  "object": "@body('CallWFRedact')?['staged_files']['redacted_audio']['full_path']",
+                  "generation": "@json(body('CallWFRedact')?['staged_files']['redacted_audio']['version'])",
+                  "uploaded_at": "@body('CallWFRedact')?['staged_files']['redacted_audio']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFRedact": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "If_redacted_video": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@body('CallWFRedact')?['staged_files']",
+                    "redacted_video"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "staged_redacted_video_obj": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@body('CallWFRedact')?['staged_files']['redacted_video']['bucket_name']",
+                  "object": "@body('CallWFRedact')?['staged_files']['redacted_video']['full_path']",
+                  "generation": "@json(body('CallWFRedact')?['staged_files']['redacted_video']['version'])",
+                  "uploaded_at": "@body('CallWFRedact')?['staged_files']['redacted_video']['uploaded']"
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            },
+            "runAfter": {
+              "CallWFRedact": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redacted_transcript_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "redacted_transcript": "@outputs('staged_redacted_transcript_obj')"
+            },
+            "runAfter": {
+              "If_redacted_transcript": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "transcript_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "transcript": "@outputs('staged_redacted_transcript_obj')"
+            },
+            "runAfter": {
+              "redacted_transcript_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files12": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redacted_transcript_tempfile1')?['redacted_transcript'],null),outputs('tempfile'),outputs('redacted_transcript_tempfile1'))",
+            "runAfter": {
+              "transcript_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files11": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('transcript_tempfile1')?['transcript'],null),outputs('tempfile'),outputs('transcript_tempfile1'))",
+            "runAfter": {
+              "staged_files12": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redacted_nlp_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "redacted_nlp": "@outputs('staged_redacted_nlp_obj')"
+            },
+            "runAfter": {
+              "If_redacted_nlp": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "nlp_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "nlp": "@outputs('staged_redacted_nlp_obj')"
+            },
+            "runAfter": {
+              "redacted_nlp_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files13": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redacted_nlp_tempfile1')?['redacted_nlp'],null),outputs('tempfile'),outputs('redacted_nlp_tempfile1'))",
+            "runAfter": {
+              "nlp_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files12": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('nlp_tempfile1')?['nlp'],null),outputs('tempfile'),outputs('nlp_tempfile1'))",
+            "runAfter": {
+              "staged_files13": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redacted_audio_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "redacted_audio": "@outputs('staged_redacted_audio_obj')"
+            },
+            "runAfter": {
+              "If_redacted_audio": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "audio_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "audio": "@outputs('staged_redacted_audio_obj')"
+            },
+            "runAfter": {
+              "redacted_audio_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files14": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redacted_audio_tempfile1')?['redacted_audio'],null),outputs('tempfile'),outputs('redacted_audio_tempfile1'))",
+            "runAfter": {
+              "audio_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files13": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('audio_tempfile1')?['audio'],null),outputs('tempfile'),outputs('audio_tempfile1'))",
+            "runAfter": {
+              "staged_files14": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "redacted_video_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "redacted_video": "@outputs('staged_redacted_video_obj')"
+            },
+            "runAfter": {
+              "If_redacted_video": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "video_tempfile1": {
+            "type": "Compose",
+            "inputs": {
+              "video": "@outputs('staged_redacted_video_obj')"
+            },
+            "runAfter": {
+              "redacted_video_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "staged_files15": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('redacted_video_tempfile1')?['redacted_video'],null),outputs('tempfile'),outputs('redacted_video_tempfile1'))",
+            "runAfter": {
+              "video_tempfile1": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "working_files14": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('video_tempfile1')?['video'],null),outputs('tempfile'),outputs('video_tempfile1'))",
+            "runAfter": {
+              "staged_files15": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "working_files10": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged_files16": {
+        "type": "Compose",
+        "inputs": "@removeProperty(if(equals(outputs('config')?['redact']['CI_REDACT'],true),union(outputs('staged_files11'),outputs('staged_files12'),outputs('staged_files13'),outputs('staged_files14'),outputs('staged_files15')),outputs('staged_files11')),'tempfile')",
+        "runAfter": {
+          "If-CI_REDACT-true": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "working_files15": {
+        "type": "Compose",
+        "inputs": "@removeProperty(if(equals(outputs('config')?['redact']['CI_REDACT'],true),union(outputs('working_files10'),outputs('working_files11'),outputs('working_files12'),outputs('working_files13'),outputs('working_files14')),outputs('working_files10')),'tempfile')",
+        "runAfter": {
+          "staged_files16": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "tempfilelistarray": {
+        "type": "Compose",
+        "inputs": {},
+        "runAfter": {
+          "working_files15": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "WorkingFilesData": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "not": {
+                "equals": [
+                  "@outputs('working_files15')",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        "actions": {
+          "IfTranscriptInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "transcript"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "transcriptcopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['transcript']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['transcript']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['transcript']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['transcript']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['transcript']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['transcript']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['transcript']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyTranscriptBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('transcriptcopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('transcriptcopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('transcriptcopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('transcriptcopyinput')?['ContentPath']}/transcript.@{outputs('transcriptcopyinput')?['extension']}"
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "transcriptcopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile1": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyTranscriptBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyTranscriptBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyTranscriptBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyTranscriptBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyTranscriptBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist1": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "transcript",
+                  "file_name": "@first(split(last(split(outputs('CopyTranscriptBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyTranscriptBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyTranscriptBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyTranscriptBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile1": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfAudioInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "audio"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "audiocopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['audio']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['audio']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['audio']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['audio']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['audio']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['audio']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['audio']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyAudioBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('audiocopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('audiocopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('audiocopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('audiocopyinput')?['ContentPath']}/audio.@{outputs('audiocopyinput')?['extension']}",
+                    "overrideIfExists": true
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "audiocopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile2": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyAudioBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyAudioBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyAudioBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyAudioBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyAudioBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist2": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "audio",
+                  "file_name": "@first(split(last(split(outputs('CopyAudioBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyAudioBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyAudioBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyAudioBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile2": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfVideoInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "video"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "videocopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['video']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['video']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['video']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['video']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['video']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['video']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['video']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyVideoBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('videocopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('videocopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('videocopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('videocopyinput')?['ContentPath']}/video.@{outputs('videocopyinput')?['extension']}",
+                    "overrideIfExists": true
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "videocopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile3": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyVideoBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyVideoBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyVideoBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyVideoBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyVideoBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist3": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "video",
+                  "file_name": "@first(split(last(split(outputs('CopyVideoBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyVideoBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyVideoBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyVideoBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile3": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfWaveformInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "waveform"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "waveformcopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['waveform']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['waveform']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['waveform']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['waveform']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['waveform']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['waveform']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['waveform']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyWaveformBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('waveformcopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('waveformcopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('waveformcopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('waveformcopyinput')?['ContentPath']}/waveform.@{outputs('waveformcopyinput')?['extension']}",
+                    "overrideIfExists": true
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "waveformcopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile4": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyWaveformBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyWaveformBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyWaveformBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyWaveformBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyWaveformBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist4": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "waveform",
+                  "file_name": "@first(split(last(split(outputs('CopyWaveformBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyWaveformBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyWaveformBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyWaveformBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile4": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfMetricsInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "metrics"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "metricscopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['metrics']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['metrics']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['metrics']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['metrics']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['metrics']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['metrics']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['metrics']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyMetricsBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('metricscopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('metricscopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('metricscopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('metricscopyinput')?['ContentPath']}/metrics.@{outputs('metricscopyinput')?['extension']}",
+                    "overrideIfExists": true
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "metricscopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile5": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyMetricsBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyMetricsBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyMetricsBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyMetricsBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyMetricsBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist5": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "metrics",
+                  "file_name": "@first(split(last(split(outputs('CopyMetricsBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyMetricsBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyMetricsBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyMetricsBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile5": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "IfNLPInWorkingFiles": {
+            "type": "If",
+            "expression": {
+              "or": [
+                {
+                  "contains": [
+                    "@outputs('working_files15')",
+                    "nlp"
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "nlpcopyinput": {
+                "type": "Compose",
+                "inputs": {
+                  "StagingContainer": "@outputs('working_files15')?['nlp']['bucket']",
+                  "StagingBlobPath": "@outputs('working_files15')?['nlp']['object']",
+                  "StagingBlobName": "@last(split(outputs('working_files15')?['nlp']['object'],'/'))",
+                  "StagingBlobVersion": "@outputs('working_files15')?['nlp']['generation']",
+                  "ContentContainer": "@outputs('buckets')?['content']",
+                  "ContentBlobNameWithExtension": "@last(split(outputs('working_files15')?['nlp']['object'],'/'))",
+                  "ContentPath": "@outputs('content_config')?['folder_path']",
+                  "ContentBlobName": "@last(split(last(split(outputs('working_files15')?['nlp']['object'],'/')),'_'))",
+                  "extension": "@last(split(last(split(last(split(outputs('working_files15')?['nlp']['object'],'/')),'_')),'.'))"
+                }
+              },
+              "CopyNLPBlobFromStagingToContent": {
+                "type": "ServiceProvider",
+                "inputs": {
+                  "parameters": {
+                    "sourceContainerName": "@outputs('nlpcopyinput')?['StagingContainer']",
+                    "sourceBlobName": "@outputs('nlpcopyinput')?['StagingBlobPath']",
+                    "destinationContainerName": "@outputs('nlpcopyinput')?['ContentContainer']",
+                    "destinationBlobName": "@{outputs('nlpcopyinput')?['ContentPath']}/nlp.@{outputs('nlpcopyinput')?['extension']}",
+                    "overrideIfExists": true
+                  },
+                  "serviceProviderConfiguration": {
+                    "connectionName": "AzureBlob",
+                    "operationId": "copyBlob",
+                    "serviceProviderId": "/serviceProviders/AzureBlob"
+                  }
+                },
+                "runAfter": {
+                  "nlpcopyinput": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempcontentfile6": {
+                "type": "Compose",
+                "inputs": {
+                  "bucket": "@outputs('CopyNLPBlobFromStagingToContent')?['body']['containerName']",
+                  "object": "@outputs('CopyNLPBlobFromStagingToContent')?['body']['blobFullPathWithContainer']",
+                  "generation": "@json(outputs('CopyNLPBlobFromStagingToContent')?['body']['eTag'])",
+                  "uploaded_at": "@outputs('CopyNLPBlobFromStagingToContent')?['body']['creationTime']"
+                },
+                "runAfter": {
+                  "CopyNLPBlobFromStagingToContent": [
+                    "SUCCEEDED"
+                  ]
+                }
+              },
+              "tempfilelist6": {
+                "type": "Compose",
+                "inputs": {
+                  "file_type": "nlp",
+                  "file_name": "@first(split(last(split(outputs('CopyNLPBlobFromStagingToContent')?['body']['name'],'/')),'.'))",
+                  "file_name_ext": "@last(split(outputs('CopyNLPBlobFromStagingToContent')?['body']['name'],'/'))",
+                  "file_uri": "https://@{outputs('LandingFileData')?['storageaccountname']}.blob.core.windows.net/@{outputs('CopyNLPBlobFromStagingToContent')?['body']['blobFullPathWithContainer']\n}",
+                  "file_gen": "@json(outputs('CopyNLPBlobFromStagingToContent')?['body']['eTag'])"
+                },
+                "runAfter": {
+                  "tempcontentfile6": [
+                    "SUCCEEDED"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "actions": {}
+            }
+          },
+          "outputoftranscriptcopy": {
+            "type": "Compose",
+            "inputs": {
+              "transcript": "@outputs('tempcontentfile1')"
+            },
+            "runAfter": {
+              "IfTranscriptInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_transcript": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputoftranscriptcopy')?['transcript'],null),outputs('tempfile'),outputs('outputoftranscriptcopy'))",
+            "runAfter": {
+              "outputoftranscriptcopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray1": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputoftranscriptcopy')?['transcript'],null),outputs('tempfilelistarray'),outputs('tempfilelist1'))",
+            "runAfter": {
+              "content_files_transcript": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "outputofaudiocopy": {
+            "type": "Compose",
+            "inputs": {
+              "audio": "@outputs('tempcontentfile2')"
+            },
+            "runAfter": {
+              "IfAudioInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_audio": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofaudiocopy')?['audio'],null),outputs('tempfile'),outputs('outputofaudiocopy'))",
+            "runAfter": {
+              "outputofaudiocopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray2": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofaudiocopy')?['audio'],null),outputs('tempfilelistarray'),outputs('tempfilelist2'))",
+            "runAfter": {
+              "content_files_audio": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "outputofvideocopy": {
+            "type": "Compose",
+            "inputs": {
+              "video": "@outputs('tempcontentfile3')"
+            },
+            "runAfter": {
+              "IfVideoInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_video": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofvideocopy')?['video'],null),outputs('tempfile'),outputs('outputofvideocopy'))",
+            "runAfter": {
+              "outputofvideocopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray3": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofvideocopy')?['video'],null),outputs('tempfilelistarray'),outputs('tempfilelist3'))",
+            "runAfter": {
+              "content_files_video": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "outputofwaveformcopy": {
+            "type": "Compose",
+            "inputs": {
+              "waveform": "@outputs('tempcontentfile4')"
+            },
+            "runAfter": {
+              "IfWaveformInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_waveform": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofwaveformcopy')?['waveform'],null),outputs('tempfile'),outputs('outputofwaveformcopy'))",
+            "runAfter": {
+              "outputofwaveformcopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray4": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofwaveformcopy')?['waveform'],null),outputs('tempfilelistarray'),outputs('tempfilelist4'))",
+            "runAfter": {
+              "content_files_waveform": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "outputofmetricscopy": {
+            "type": "Compose",
+            "inputs": {
+              "metrics": "@outputs('tempcontentfile5')"
+            },
+            "runAfter": {
+              "IfMetricsInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_metrics": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofmetricscopy')?['metrics'],null),outputs('tempfile'),outputs('outputofmetricscopy'))",
+            "runAfter": {
+              "outputofmetricscopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray5": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofmetricscopy')?['metrics'],null),outputs('tempfilelistarray'),outputs('tempfilelist5'))",
+            "runAfter": {
+              "content_files_metrics": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "outputofnlpcopy": {
+            "type": "Compose",
+            "inputs": {
+              "nlp": "@outputs('tempcontentfile6')"
+            },
+            "runAfter": {
+              "IfNLPInWorkingFiles": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "content_files_nlp": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofnlpcopy')?['nlp'],null),outputs('tempfile'),outputs('outputofnlpcopy'))",
+            "runAfter": {
+              "outputofnlpcopy": [
+                "SUCCEEDED"
+              ]
+            }
+          },
+          "filelistarray6": {
+            "type": "Compose",
+            "inputs": "@if(equals(outputs('outputofnlpcopy')?['nlp'],null),outputs('tempfilelistarray'),outputs('tempfilelist6'))",
+            "runAfter": {
+              "content_files_nlp": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "tempfilelistarray": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "content_files": {
+        "type": "Compose",
+        "inputs": "@removeProperty(union(outputs('content_files_audio'),outputs('content_files_video'),outputs('content_files_transcript'),outputs('content_files_waveform'),outputs('content_files_metrics'),outputs('content_files_nlp')),'tempfile')",
+        "runAfter": {
+          "WorkingFilesData": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "filelistarray": {
+        "type": "Compose",
+        "inputs": "@json(replace(concat('[',outputs('filelistarray1'),',',outputs('filelistarray2'),',',outputs('filelistarray3'),',',outputs('filelistarray4'),',',outputs('filelistarray5'),',',outputs('filelistarray6'),',',outputs('tempfilelistarray'),']'),',{}',''))",
+        "runAfter": {
+          "content_files": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "raw_message": {
+        "type": "Compose",
+        "inputs": {
+          "azure_subscription": "@outputs('context1')?['azure_subscription']",
+          "azure_location": "@outputs('context1')?['azure_location']",
+          "config_bucket_name": "@outputs('context1')?['config_bucket_name']",
+          "execution_id": "@outputs('context1')?['execution_id']",
+          "execution_start": "@outputs('context1')?['execution_start']",
+          "client_id": "@outputs('context1')?['client_id']",
+          "interaction_id": "@outputs('context1')?['interaction_id']",
+          "redact": "@outputs('config')?['redact']['CI_REDACT']",
+          "trigger_file_type": "@outputs('context1')?['type']",
+          "trigger_file_name": "@first(split(outputs('context1')?['trigger_file']['name'],'.'))",
+          "trigger_file_name_ext": "@outputs('context1')?['trigger_file']['full_path']",
+          "trigger_file_uri": "@outputs('LandingFileData')?['url']",
+          "trigger_file_gen": "@outputs('context1')?['trigger_file']['version']",
+          "trigger_file_uploaded": "@outputs('context1')?['trigger_file']['upload_timestamp']",
+          "content_files": "@outputs('filelistarray')"
+        },
+        "runAfter": {
+          "filelistarray": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "encoded_message": {
+        "type": "Compose",
+        "inputs": "@base64(outputs('raw_message'))",
+        "runAfter": {
+          "raw_message": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "Send_Event": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "eventHubName": "dev-eventhub-feb",
+            "eventData": {
+              "contentData": "@outputs('encoded_message')"
+            }
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "eventHub",
+            "operationId": "sendEvent",
+            "serviceProviderId": "/serviceProviders/eventHub"
+          }
+        },
+        "runAfter": {
+          "encoded_message": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "content": {
+        "type": "Compose",
+        "inputs": "@outputs('content_files')",
+        "runAfter": {
+          "Send_Event": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "working": {
+        "type": "Compose",
+        "inputs": "@outputs('working_files15')",
+        "runAfter": {
+          "content": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "staged": {
+        "type": "Compose",
+        "inputs": "@outputs('staged_files16')",
+        "runAfter": {
+          "working": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "For_each": {
+        "type": "Foreach",
+        "foreach": "@outputs('List_all_the_blobs_using_path')?['body']['blobs']",
+        "actions": {
+          "StagingBlobName": {
+            "type": "Compose",
+            "inputs": {
+              "BlobName": "@items('For_each')?['name']"
+            }
+          },
+          "Delete_a_blob": {
+            "type": "ServiceProvider",
+            "inputs": {
+              "parameters": {
+                "containerName": "@outputs('staging_config')?['bucket_name']",
+                "blobName": "@outputs('StagingBlobName')?['BlobName']"
+              },
+              "serviceProviderConfiguration": {
+                "connectionName": "AzureBlob",
+                "operationId": "deleteBlob",
+                "serviceProviderId": "/serviceProviders/AzureBlob"
+              }
+            },
+            "runAfter": {
+              "StagingBlobName": [
+                "SUCCEEDED"
+              ]
+            }
+          }
+        },
+        "runAfter": {
+          "List_all_the_blobs_using_path": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "files": {
+        "type": "Compose",
+        "inputs": {
+          "content": "@outputs('content')",
+          "staged": "@outputs('staged')",
+          "working": "@outputs('working')"
+        },
+        "runAfter": {
+          "For_each": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "c": {
+        "type": "Compose",
+        "inputs": {
+          "media_info": "@outputs('media_info')",
+          "files": "@outputs('files')"
+        },
+        "runAfter": {
+          "files": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "CopyBlobToStagingContainer": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "sourceContainerName": "@outputs('context1')?['trigger_file']['bucket_name']",
+            "sourceBlobName": "@outputs('context1')?['trigger_file']['full_path']",
+            "destinationContainerName": "@outputs('buckets')?['staging']",
+            "destinationBlobName": "@{outputs('staging_config')?['folder_path']}/@{outputs('staging_config')?['file_prefix']}_@{outputs('context1')?['trigger_file']['name']}",
+            "overrideIfExists": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "AzureBlob",
+            "operationId": "copyBlob",
+            "serviceProviderId": "/serviceProviders/AzureBlob"
+          }
+        },
+        "runAfter": {
+          "content_config": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "List_all_the_blobs_using_path": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "containerName": "@outputs('staging_config')?['bucket_name']",
+            "blobNamePrefix": "@{outputs('staging_config')?['folder_path']}/"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "AzureBlob",
+            "operationId": "listBlobs",
+            "serviceProviderId": "/serviceProviders/AzureBlob"
+          }
+        },
+        "runAfter": {
+          "staged": [
+            "SUCCEEDED"
+          ]
+        }
+      },
+      "Send_Email": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "from": "saurav.padhy@sonata-software.com",
+            "to": "shubhamangala.k@sonata-software.com",
+            "subject": "Workflow failed-@{outputs('context')?['execution_id']}",
+            "body": "Below are the details.\n\nWorkflow Execution ID : @{outputs('context')?['execution_id']}.\nUploaded File name : @{outputs('LandingFileData')?['filename']}.\nClient_ID:@{outputs('GetLandingContainerMetadata')?['client_id']}.\nURL:@{outputs('LandingFileData')?['url']}.\nBlob_Path : @{outputs('LandingFileData')?['full_path']}",
+            "importance": "Normal"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "Smtp",
+            "operationId": "sendEmail",
+            "serviceProviderId": "/serviceProviders/Smtp"
+          }
+        },
+        "runAfter": {
+          "For_each": [
+            "TIMEDOUT",
+            "SKIPPED",
+            "FAILED"
+          ]
+        }
+      }
+    },
+    "contentVersion": "1.0.0.0",
+    "outputs": {},
+    "triggers": {
+      "StartLandingContainer": {
+        "type": "Request",
+        "kind": "Http"
+      }
+    }
+  },
+  "kind": "Stateful"
+}

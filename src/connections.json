@@ -1,0 +1,40 @@
+{
+  "serviceProviderConnections": {
+    "AzureBlob": {
+      "displayName": "Blob-Copy-MI",
+      "parameterSetName": "ManagedServiceIdentity",
+      "parameterValues": {
+        "authProvider": {
+          "Type": "ManagedServiceIdentity"
+        },
+        "blobStorageEndpoint": "@appsetting('AzureBlob_blobStorageEndpoint')"
+      },
+      "serviceProvider": {
+        "id": "/serviceProviders/AzureBlob"
+      }
+    },
+    "Smtp": {
+      "displayName": "SMTP",
+      "parameterValues": {
+        "enableSSL": "@appsetting('Smtp_enableSSL')",
+        "password": "@appsetting('Smtp_password')",
+        "port": "@appsetting('Smtp_port')",
+        "serverAddress": "@appsetting('Smtp_serverAddress')",
+        "username": "@appsetting('Smtp_username')"
+      },
+      "serviceProvider": {
+        "id": "/serviceProviders/Smtp"
+      }
+    },
+    "eventHub": {
+      "displayName": "EventHub-Send",
+      "parameterSetName": "connectionString",
+      "parameterValues": {
+        "connectionString": "@appsetting('eventHub_connectionString')"
+      },
+      "serviceProvider": {
+        "id": "/serviceProviders/eventHub"
+      }
+    }
+  }
+}

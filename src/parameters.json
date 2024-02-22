@@ -1,0 +1,39 @@
+{
+  "INIT-Function": {
+    "type": "Object",
+    "value": {
+      "transcode_media": [
+        "process-audio"
+      ],
+      "transcribe_media": [
+        "process-audio",
+        "deepgram",
+        "process-transcript"
+      ],
+      "analyse_transcript": [
+        "process-transcript"
+      ],
+      "redact": [
+        "process-transcript",
+        "redact-audio"
+      ],
+      "process_metadata": [
+        "process-metadata"
+      ]
+    }
+  },
+  "INIT-bucket_label_tags": {
+    "type": "Object",
+    "value": {
+      "client": "ci_client",
+      "step": "ci_step",
+      "type": "ci_media_type"
+    }
+  },
+  "INIT-staging_config": {
+    "type": "Object",
+    "value": {
+      "file_prefix": "staged"
+    }
+  }
+}
