@@ -6,7 +6,7 @@
                 "inputs": {
                     "body": "@outputs('InputForWFConfigure')",
                     "method": "POST",
-                    "uri": "https://manages-test-func-app.azurewebsites.net/api/wf_configure_HttpTrigger1?code=$CONFIGURE_FUNC_MASTER_KEY"
+                    "uri": "$WF_CONFIGURE_FUNC_URL"
                 },
                 "runAfter": {
                     "InputForWFConfigure": [
