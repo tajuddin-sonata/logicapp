@@ -11,12 +11,44 @@ pipeline {
             description: 'Choose which environment to deploy to.')
         
         string(name: 'VERSION', description: 'Explicit version to deploy (i.e., "v0.1-51-g87b72a"). Leave blank to build latest commit')
-        
-        
-        string(name: 'AZURE_LOGICAPP_NAME', defaultValue:'dev-jenkins-logic-app', description: '''The name of LogicApp to deploy
-            dev-jenkins-logic-app
-            jenkins-logic-app''' )
 
+
+        string(name: 'CONFIGURE_FUNCTIONAPP_NAME', defaultValue: 'dev-func-wfconfigure-sitl-eus', description: '''The name of FunctionApp 
+            dev-func-wfconfigure-sitl-eus
+            stg-func-wfconfigure-sitl-eus
+            prd-func-wfconfigure-sitl-eus
+            ''' )
+
+        string(name: 'TRANSCODE_FUNCTIONAPP_NAME', defaultValue: 'dev-func-wftranscode-sitl-eus', description: '''The name of FunctionApp 
+            dev-func-wftranscode-sitl-eus
+            stg-func-wftranscode-sitl-eus
+            prd-func-wftranscode-sitl-eus
+            ''' )
+
+        string(name: 'TRANSCRIBE_FUNCTIONAPP_NAME', defaultValue: 'dev-func-wftranscribe-sitl-eus', description: '''The name of FunctionApp 
+            dev-func-wftranscribe-sitl-eus
+            stg-func-wftranscribe-sitl-eus
+            prd-func-wftranscribe-sitl-eus
+            ''' )
+
+        string(name: 'ANALYSE_FUNCTIONAPP_NAME', defaultValue: 'dev-func-wfanalyse-sitl-eus', description: '''The name of FunctionApp 
+            dev-func-wfanalyse-sitl-eus
+            stg-func-wfanalyse-sitl-eus
+            prd-func-wfanalyse-sitl-eus
+            ''' )
+
+        string(name: 'REDACT_FUNCTIONAPP_NAME', defaultValue: 'dev-func-wfredact-sitl-eus', description: '''The name of FunctionApp 
+            dev-func-wfredact-sitl-eus
+            stg-func-wfredact-sitl-eus
+            prd-func-wfredact-sitl-eus
+            ''' )
+        
+        string(name: 'AZURE_LOGICAPP_NAME', defaultValue:'dev-logicapp-sitl-eus', description: '''The name of LogicApp to deploy
+            dev-logicapp-sitl-eus
+            stg-logicapp-sitl-eus
+            prod-logicapp-sitl-eus
+            ''' )
+        /*
         string(name: 'AZURE_LOGIC_ASP_NAME', defaultValue:'dev-logic-app-ASP', description: '''The name of App service Plan for FunctionApp to deploy
             dev-logic-app-ASP
             logic-ASP
@@ -31,6 +63,7 @@ pipeline {
         string(name: 'AZURE_APP_INSIGHTS_NAME', defaultValue:'v2-func-app-insight', description: '''The name of Application insight for FunctionApp to deploy
             v2-func-app-insight
             ''' )
+            */
         
         // string(name: 'APP_INSIGHTS_INSTRUMENTATION_KEY', description: '''select the existing Application insight Instrumentation Key .
         //     9b3a9c7a-fec6-4f67-b669-a149294fbeee 
@@ -50,6 +83,8 @@ pipeline {
         //     jenkins-privateend-connection
         //     ''')
 
+
+        /*
         string(name: 'VNET_NAME', defaultValue:'jenkins-vm-vnet', description: ''' Vnet name for Private endpoint connection & Vnet integration.
             jenkins-vm-vnet
             ''')
@@ -59,37 +94,34 @@ pipeline {
             jenkins-inbound-subnet
             jenkins-subnet
             ''')
-
+        */
         // string(name: 'OUTBOUND_VNET_NAME', description: ''' Outbound Vnet name for Vnet integration.
         //     jenkins-vm-vnet
         //     ''')
 
-        string(name: 'OUTBOUND_SNET_NAME', defaultValue:'jenkins-logicapp-outboud-subnet', description: ''' Outbound Subnet name for Private endpoint connection.
-            jenkins-logicapp-outboud-subnet
-            jenkins-outbound-subnet
-            jenkins-subnet-01
-            ''')
 
 
-        // choice(name: 'SUBSCRIPTION', choices:[
-        //     '48986b2e-5349-4fab-a6e8-d5f02072a4b8',
-        //     '34b1c36e-d8e8-4bd5-a6f3-2f92a1c0626e',
-        //     '70c3af66-8434-419b-b808-0b3c0c4b1a04'
-        //     ],
-        //     description: 'Subscription to deploy to .')
+        // string(name: 'OUTBOUND_SNET_NAME', defaultValue:'jenkins-logicapp-outboud-subnet', description: ''' Outbound Subnet name for Private endpoint connection.
+        //     jenkins-logicapp-outboud-subnet
+        //     jenkins-outbound-subnet
+        //     jenkins-subnet-01
+        //     ''')
+
 
         string(name: 'SUBSCRIPTION', defaultValue:'48986b2e-5349-4fab-a6e8-d5f02072a4b8', description: ''' select subscription as:
             48986b2e-5349-4fab-a6e8-d5f02072a4b8
             34b1c36e-d8e8-4bd5-a6f3-2f92a1c0626e
             70c3af66-8434-419b-b808-0b3c0c4b1a04''')
 
-        string(name: 'RESOURCE_GROUP_NAME', defaultValue:'jenkins-247-rg', description: ''' Azure Resource Group in which the FunctionApp need to deploy.
-            jenkins-247-rg
+        string(name: 'RESOURCE_GROUP_NAME', defaultValue:'tfs_rg_dev_eus_sitl', description: ''' Azure Resource Group in which the FunctionApp need to deploy.
+            tfs_rg_dev_eus_sitl
+            tfs_rg_stg_eus_sitl
+            tfs_rg_prod_eus_sitl
             ''')
 
-        choice(name: 'SKU', choices:[
-            'WS2'], 
-            description: 'ASP SKU.')
+        // choice(name: 'SKU', choices:[
+        //     'WS2'], 
+        //     description: 'ASP SKU.')
 
     }
 
@@ -97,7 +129,7 @@ pipeline {
         AZURE_CLIENT_ID = credentials('azurerm_client_id')
         AZURE_CLIENT_SECRET = credentials('azurerm_client_secret')
         AZURE_TENANT_ID = credentials('azurerm_tenant_id')
-        ZIP_FILE_NAME = "${params.AZURE_LOGICAPP_NAME}"
+        FILE_PREFIX = "${params.ENVIRONMENT}"
         SONARQUBE_SCANNER_HOME = tool 'sonarscanner-5'
         logicAppResourceId="/subscriptions/${params.SUBSCRIPTION}/resourceGroups/${params.RESOURCE_GROUP_NAME}/providers/Microsoft.Web/sites/${params.AZURE_LOGICAPP_NAME}"
     }
@@ -110,12 +142,6 @@ pipeline {
 
             }
         }
-
-        // stage('Package Code') {
-        //     steps {
-        //         sh "zip -r ${ZIP_FILE_NAME} ."
-        //     }
-        // }
 
 
         /*
@@ -138,6 +164,83 @@ pipeline {
             }
         } */
 
+        stage('Check/install Azure Tools') {
+            steps {
+                script {
+
+                    // check if Azure CLI is installed, if not installed then install it.
+                    def azcliVersion = sh(script: 'az -v', returnStatus: true)
+                    if (azcliVersion != 0) {
+                        echo "Azure CLI is not installed, installing now..."
+                        // Install Azure function core tool
+                        sh 'sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc'
+                        sh 'sudo dnf install -y https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm'
+                        sh 'sudo dnf install azure-cli -y'
+                    } else {
+                        def az_installedVersion = sh(script: 'az -v', returnStdout: true).trim()
+                        echo "func core tool is already installed (Version: ${az_installedVersion})"
+                    }
+
+                    // check if nodejs is installed, if not installed then install it.
+                    def nodeVersion = sh(script: 'node -v', returnStatus: true)
+                    if (nodeVersion != 0) {
+                        echo "Node.js is not installed, installing now..."
+                        // Install Node.js
+                        // sh 'curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -'
+                        sh 'sudo yum install -y nodejs'
+                    } else {
+                        def node_installedVersion = sh(script: 'node -v', returnStdout: true).trim()
+                        echo "Node.js is already installed (Version: ${node_installedVersion})"
+                    }
+
+                    // check if Azure function core tool is installed, if not installed then install it.
+                    def funcVersion = sh(script: 'func -v', returnStatus: true)
+                    if (funcVersion != 0) {
+                        echo "Azure function core tool is not installed, installing now..."
+                        // Install Azure function core tool
+                        sh 'sudo npm i -g azure-functions-core-tools@4 --unsafe-perm true'
+                    } else {
+                        def func_installedVersion = sh(script: 'func -v', returnStdout: true).trim()
+                        echo "Azure function core tool is already installed (Version: ${func_installedVersion})"
+                    }
+                }
+            }
+        }
+
+        stage ('replace variable in code') {
+            steps {
+                script {
+                    sh 'az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID'
+                    sh "az account set --subscription ${params.SUBSCRIPTION}"
+                    
+                    def configure_func_url = sh(script: "func azure functionapp list-functions ${params.CONFIGURE_FUNCTIONAPP_NAME} --show-keys | awk '/Invoke url:/ {print \$3}'", returnStdout: true).trim()
+                    echo "configure_func_url: ${configure_func_url}"
+
+                    def transcode_func_url = sh(script: "func azure functionapp list-functions ${params.TRANSCODE_FUNCTIONAPP_NAME} --show-keys | awk '/Invoke url:/ {print \$3}'", returnStdout: true).trim()
+                    echo "transcode_func_url: ${transcode_func_url}"
+                    
+                    def transcribe_func_url = sh(script: "func azure functionapp list-functions ${params.TRANSCRIBE_FUNCTIONAPP_NAME} --show-keys | awk '/Invoke url:/ {print \$3}'", returnStdout: true).trim()
+                    echo "transcribe_func_url: ${transcribe_func_url}"
+                    
+                    def analyse_func_url = sh(script: "func azure functionapp list-functions ${params.ANALYSE_FUNCTIONAPP_NAME} --show-keys | awk '/Invoke url:/ {print \$3}'", returnStdout: true).trim()
+                    echo "analyse_func_url: ${analyse_func_url}"
+                    
+                    def redact_func_url = sh(script: "func azure functionapp list-functions ${params.REDACT_FUNCTIONAPP_NAME} --show-keys | awk '/Invoke url:/ {print \$3}'", returnStdout: true).trim()
+                    echo "redact_func_url: ${redact_func_url}"
+                    
+                    sh """
+                        cd src/workflow1/
+                        sed -i 's|\$CONFIGURE_FUNC_URL|${configure_func_url}|g' workflow.json
+                        sed -i 's|\$TRANSCODE_FUNC_URL|${transcode_func_url}|g' workflow.json
+                        sed -i 's|\$TRANSCRIBE_FUNC_URL|${transcribe_func_url}|g' workflow.json
+                        sed -i 's|\$ANALYSE_FUNC_URL|${analyse_func_url}|g' workflow.json
+                        sed -i 's|\$REDACT_FUNC_URL|${redact_func_url}|g' workflow.json
+
+                    """
+                }
+            }
+        }
+
 
         stage('SonarQube Analysis') {
             steps {
@@ -148,6 +251,8 @@ pipeline {
             }
         }
         
+
+        /*
         stage('Create APP Service Plan') {
             steps {
                 sh 'az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID'
@@ -158,7 +263,10 @@ pipeline {
             }
 
         }
+        */
 
+
+        /*
         stage('Create LogicApp') {
             steps {
                 // create Logicapp
@@ -181,13 +289,7 @@ pipeline {
                 sh "az network private-endpoint dns-zone-group create --endpoint-name ${params.AZURE_LOGICAPP_NAME}-private-endpoint -g ${params.RESOURCE_GROUP_NAME} -n ${params.AZURE_LOGICAPP_NAME}-dns-config --zone-name default --private-dns-zone privatelink.azurewebsites.net" 
             }
         }
-
-        // stage('Deploy code to LogicApp'){
-        //     steps {
-        //         sh "az webapp deployment source config-zip -g ${params.RESOURCE_GROUP_NAME} -n ${params.AZURE_LOGICAPP_NAME} --subscription ${params.SUBSCRIPTION} --src $ZIP_FILE_NAME-\${artifact_version}.zip"
-        //         // sh "az logicapp deployment source config-zip -g ${params.RESOURCE_GROUP_NAME} -n ${params.AZURE_LOGICAPP_NAME} --subscription ${params.SUBSCRIPTION} --src $ZIP_FILE_NAME-\${artifact_version}.zip"
-        //     }
-        // }
+        */
 
         stage('Deploy artifact to Nexus & LogicApp') {
             steps {
@@ -200,23 +302,23 @@ pipeline {
                         if [ -z "$ver" ]; then
                             artifact_version=\$(git describe --tags)
                             echo "\${artifact_version}" > src/version.txt
-                            cd src
-                            zip -r "../$ZIP_FILE_NAME-\${artifact_version}.zip" *
+                            cd src/
+                            zip -r "../$FILE_PREFIX-logicapp-\${artifact_version}.zip" *
                             cd $WORKSPACE
-                            echo "CREATED [$ZIP_FILE_NAME-\${artifact_version}.zip]"
+                            echo "CREATED [$FILE_PREFIX-logicapp-\${artifact_version}.zip]"
                             curl -v -u nexus-user:nexus@123 --upload-file \
-                                "$ZIP_FILE_NAME-\${artifact_version}.zip" \
-                                "http://20.40.49.121:8081/repository/ci-config-service/$ZIP_FILE_NAME-\${artifact_version}.zip"
+                                "$FILE_PREFIX-logicapp-\${artifact_version}.zip" \
+                                "http://74.225.187.237:8081/repository/packages/cca/$FILE_PREFIX-logicapp-\${artifact_version}.zip"
                         else
                             artifact_version=$ver
                             echo "Downloading specified artifact version from Nexus..."
-                            curl -v -u nexus-user:nexus@123 -O "http://20.40.49.121:8081/repository/ci-config-service/$ZIP_FILE_NAME-\${artifact_version}.zip"
+                            curl -v -u nexus-user:nexus@123 -O "http://74.225.187.237:8081/repository/packages/cca/$FILE_PREFIX-logicapp-\${artifact_version}.zip"
                         fi
-                        rm -rf "$ZIP_FILE_NAME-\${artifact_version}"
-                        unzip "$ZIP_FILE_NAME-\${artifact_version}.zip" -d "$ZIP_FILE_NAME-\${artifact_version}"
+                        rm -rf "$FILE_PREFIX-logicapp-\${artifact_version}"
+                        unzip "$FILE_PREFIX-logicapp-\${artifact_version}.zip" -d "$FILE_PREFIX-logicapp-\${artifact_version}"
 
                         ls -ltr
-                        az logicapp deployment source config-zip -g ${params.RESOURCE_GROUP_NAME} -n ${params.AZURE_LOGICAPP_NAME} --subscription ${params.SUBSCRIPTION} --src $ZIP_FILE_NAME-\${artifact_version}.zip
+                        az logicapp deployment source config-zip -g ${params.RESOURCE_GROUP_NAME} -n ${params.AZURE_LOGICAPP_NAME} --subscription ${params.SUBSCRIPTION} --src $FILE_PREFIX-logicapp-\${artifact_version}.zip
                     """
                 }
             }
