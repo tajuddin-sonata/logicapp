@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsSecretStorageType": "Files",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "APP_KIND": "workflowapp",
+    "ProjectDirectoryPath": "e:\\MY DOCS\\SONATA\\247\\Github-final-v2-model-managed-identity\\repos\\logicapp\\src"
+  }
+}
